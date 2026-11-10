@@ -23,7 +23,7 @@ def _require_seaweedfs():
     """Skip locally when S3 is down; fail in CI (CI=true / REQUIRE_SEAWEEDFS=1)."""
     try:
         _client().list_buckets()
-    except Exception as error:  # noqa: BLE001 - connect/auth failure
+    except Exception as error:
         message = f"SeaweedFS S3 not available at {_endpoint()}: {error}"
         require = (
             os.getenv("CI", "").lower() in {"1", "true", "yes"}

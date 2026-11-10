@@ -1,9 +1,11 @@
-from pathlib import Path
 import json
 import sys
+from pathlib import Path
+
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import coalesce, col, count, countDistinct, lit, struct, when
 from pyspark.sql.functions import sum as spark_sum
+
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 SILVER_ROOT = (
     PROJECT_ROOT
