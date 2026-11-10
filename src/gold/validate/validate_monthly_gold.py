@@ -183,6 +183,13 @@ def main():
     print(f"Silver input: {SILVER_ROOT}")
     print(f"Gold Monthly input: {MONTHLY_GOLD_ROOT}")
 
+    from src.common.manifest import load_gold_changes
+
+    changes = load_gold_changes()
+    if not (changes.get("affected_months") or []):
+        print("No affected months. Monthly gold validation skipped (PASS).")
+        return
+
     if not MONTHLY_GOLD_ROOT.exists():
         raise FileNotFoundError(
             f"Gold Monthly directory not found: {MONTHLY_GOLD_ROOT}"

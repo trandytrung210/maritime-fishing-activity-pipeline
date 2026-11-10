@@ -87,6 +87,8 @@ def make_client():
         aws_secret_access_key=secret_key,
         region_name="us-east-1",
         config=Config(
+            signature_version="s3v4",
+            s3={"addressing_style": "path"},
             retries={"mode": "standard", "total_max_attempts": 4},
             connect_timeout=5,
             read_timeout=30,

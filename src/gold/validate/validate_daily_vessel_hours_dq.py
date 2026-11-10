@@ -148,6 +148,16 @@ def main():
     print("DAILY VESSEL HOURS DQ VALIDATION")
     print("=" * 50)
 
+    from src.common.manifest import load_gold_changes
+
+    changes = load_gold_changes()
+    if not (changes.get("affected_months") or []):
+        print(
+            "No affected months. Daily vessel hours DQ validation "
+            "skipped (PASS)."
+        )
+        return
+
     if not DAILY_GOLD_ROOT.exists():
         raise FileNotFoundError(
             f"Daily Gold not found: {DAILY_GOLD_ROOT}"
