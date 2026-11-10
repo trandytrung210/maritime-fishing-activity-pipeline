@@ -1,0 +1,52 @@
+[project]
+name = "maritime-fishing-activity"
+version = "0.1.0"
+requires-python = ">=3.12"
+
+[tool.pytest.ini_options]
+testpaths = ["test"]
+python_files = ["test_*.py", "*_test.py"]
+pythonpath = ["."]
+addopts = [
+    "--ignore=test/test_pipeline.py",
+]
+markers = [
+    "integration: requires a live SeaweedFS S3 gateway",
+]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+src = ["src", "airflow", "test"]
+extend-exclude = [
+    "Git",
+    "cursor-skills",
+    "data",
+    "spark-warehouse",
+]
+
+[tool.ruff.lint]
+# Safe CI defaults. Broad except kept intentional in upload/ingest/validate I/O.
+select = [
+    "E4",
+    "E7",
+    "E9",
+    "F",
+    "I",
+    "UP012",
+    "UP017",
+    "UP035",
+    "RUF100",
+]
+ignore = [
+    "BLE001",
+    # Spark Column == True is intentional; bare col() can change null semantics.
+    "E712",
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["src", "include"]
+
+[tool.ruff.lint.per-file-ignores]
+"airflow/dags/*.py" = ["E402"]
+"test/test_pipeline.py" = ["F401", "I001", "E402"]

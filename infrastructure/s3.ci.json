@@ -1,0 +1,19 @@
+{
+  "identities": [
+    {
+      "name": "ci-admin",
+      "credentials": [
+        {
+          "accessKey": "ci_access_key",
+          "secretKey": "ci_secret_key"
+        }
+      ],
+      "actions": [
+        "Admin",
+        "Read",
+        "Write",
+        "List"
+      ]
+    }
+  ]
+}

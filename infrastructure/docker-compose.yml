@@ -1,0 +1,89 @@
+#tessttttt
+services:
+  master:
+    image: chrislusf/seaweedfs@sha256:c2658820e763294a9e9de7b36c81e59b879e3459148351aee4e31a126ca64860
+    command: "master -ip=master -mdir=/data"
+    volumes:
+      - master_data:/data
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://master:9333/cluster/status"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    restart: unless-stopped
+
+  volume:
+    image: chrislusf/seaweedfs@sha256:c2658820e763294a9e9de7b36c81e59b879e3459148351aee4e31a126ca64860
+    command: "volume -ip=volume -master=master:9333 -dir=/data"
+    depends_on:
+      master:
+        condition: service_healthy
+    volumes:
+      - volume_data:/data
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://volume:8080/status"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    restart: unless-stopped
+
+  filer:
+    image: chrislusf/seaweedfs@sha256:c2658820e763294a9e9de7b36c81e59b879e3459148351aee4e31a126ca64860
+    command: "filer -ip=filer -master=master:9333 -defaultStoreDir=/data"
+    depends_on:
+      master:
+        condition: service_healthy
+      volume:
+        condition: service_healthy
+    volumes:
+      - filer_data:/data
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://filer:8888/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    restart: unless-stopped
+    ports:
+      - '8888:8888'
+
+  s3:
+    image: chrislusf/seaweedfs@sha256:c2658820e763294a9e9de7b36c81e59b879e3459148351aee4e31a126ca64860
+    command: "s3 -filer=filer:8888 -config=/etc/seaweedfs/s3.json"
+    depends_on:
+      filer:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:8333:8333"
+    volumes:
+      - type: bind
+        source: ./s3.json
+        target: /etc/seaweedfs/s3.json
+        read_only: true
+        bind:
+          create_host_path: false
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - 'wget -S -O /dev/null http://127.0.0.1:8333/ 2>&1 | grep -Eq "HTTP/[0-9.]+ (200|403)"'
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+    networks:
+      - default
+      - maritime-shared
+
+volumes:
+  master_data:
+  volume_data:
+  filer_data:
+
+networks:
+  maritime-shared:
+    external: true
+    name: maritime-shared
+

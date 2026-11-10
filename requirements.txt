@@ -1,0 +1,7 @@
+pyspark==4.3.0
+boto3==1.43.123
+pyarrow==26.0.1
+python-dotenv==1.2.4
+numpy==2.5.4
+pandas==3.1.0
+portalocker==3.2.0

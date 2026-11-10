@@ -1,0 +1,9 @@
+
+logs/
+home/
+.git/
+.gitignore
+.env
+**/__pycache__/
+**/*.pyc
+**/.DS_Store

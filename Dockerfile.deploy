@@ -1,0 +1,49 @@
+# Deploy/runtime image: Java + deps + baked dags/include/src.
+# Build from repo root:
+#   docker build -f Dockerfile.deploy -t maritime-fishing-airflow:deploy .
+#
+# Local day-to-day still uses airflow/Dockerfile + bind mounts.
+
+FROM apache/airflow:3.4.0-python3.12
+
+USER root
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        openjdk-21-jre-headless \
+    && apt-get autoremove -yqq --purge \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN JAVA_BIN="$(readlink -f "$(command -v java)")" \
+    && JAVA_DIR="$(dirname "$(dirname "$JAVA_BIN")")" \
+    && ln -sfn "$JAVA_DIR" /usr/lib/jvm/java-21
+
+ENV JAVA_HOME=/usr/lib/jvm/java-21
+ENV PATH="${JAVA_HOME}/bin:${PATH}"
+
+RUN mkdir -p /opt/maritime_project/data /opt/maritime_project/reports \
+    && chown -R airflow:root /opt/maritime_project
+
+USER airflow
+
+COPY --chown=airflow:root airflow/requirements-airflow.txt /requirements-airflow.txt
+
+RUN pip install --no-cache-dir \
+    "apache-airflow==${AIRFLOW_VERSION}" \
+    -r /requirements-airflow.txt
+
+COPY --chown=airflow:root src /opt/maritime_project/src
+COPY --chown=airflow:root airflow/dags /opt/airflow/dags
+COPY --chown=airflow:root airflow/include /opt/airflow/include
+
+ENV MARITIME_PROJECT_ROOT=/opt/maritime_project
+ENV PYTHONPATH=/opt/maritime_project:/opt/airflow
+
+RUN java -version \
+    && python --version \
+    && test -x "${JAVA_HOME}/bin/java" \
+    && test -d /opt/maritime_project/src \
+    && test -d /opt/airflow/dags \
+    && test -d /opt/airflow/include \
+    && python -c "import pyspark, portalocker"

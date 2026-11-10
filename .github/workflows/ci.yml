@@ -1,0 +1,160 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  AIRFLOW_IMAGE: maritime-fishing-airflow:ci
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+
+      - name: Ruff
+        run: ruff check src airflow/dags test
+
+      - name: Pytest (unit)
+        run: pytest -q -m "not integration"
+        env:
+          PYTHONPATH: .
+
+  docker-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Airflow image
+        working-directory: airflow
+        run: |
+          docker buildx build \
+            --load \
+            --tag "${AIRFLOW_IMAGE}" \
+            --file Dockerfile \
+            .
+
+      - name: Verify image exists
+        run: |
+          docker image inspect "${AIRFLOW_IMAGE}"
+          docker images "${AIRFLOW_IMAGE}"
+
+      - name: Smoke-start image
+        run: |
+          docker run --rm --entrypoint bash "${AIRFLOW_IMAGE}" -lc '
+            set -euo pipefail
+            echo "JAVA VERSION"
+            java -version
+            echo "JAVA_HOME=$JAVA_HOME"
+            test -n "${JAVA_HOME:-}"
+            test -x "$JAVA_HOME/bin/java"
+            echo "PYTHON VERSION"
+            python --version
+            python -c "import pyspark, portalocker; print(\"pyspark\", pyspark.__version__)"
+            echo "AIRFLOW VERSION"
+            airflow version
+          '
+
+  seaweedfs-integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      S3_ENDPOINT: http://127.0.0.1:8333
+      AWS_ACCESS_KEY_ID: ci_access_key
+      AWS_SECRET_ACCESS_KEY: ci_secret_key
+      REQUIRE_SEAWEEDFS: "1"
+    defaults:
+      run:
+        working-directory: infrastructure
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+
+      - name: Install Python deps
+        working-directory: .
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+
+      - name: Start SeaweedFS
+        run: |
+          docker compose -p maritime-fishing-ci \
+            -f docker-compose.ci.yml up -d --wait
+
+      - name: Wait for S3 gateway
+        working-directory: .
+        run: |
+          for i in $(seq 1 30); do
+            status=$(curl -s --max-time 3 \
+              -o /dev/null \
+              -w "%{http_code}" \
+              "${S3_ENDPOINT}/" || true)
+
+            if [[ "$status" == "200" || "$status" == "403" ]]; then
+              echo "S3 gateway is up (HTTP $status)"
+              exit 0
+            fi
+
+            echo "Waiting for S3... ($i) status=$status"
+            sleep 2
+          done
+
+          echo "S3 gateway did not become ready"
+          docker compose -p maritime-fishing-ci \
+            -f infrastructure/docker-compose.ci.yml logs
+          exit 1
+
+      - name: SeaweedFS integration tests
+        working-directory: .
+        run: pytest -q -m integration test/test_seaweedfs_integration.py
+        env:
+          PYTHONPATH: .
+          REQUIRE_SEAWEEDFS: "1"
+
+      - name: Stop SeaweedFS
+        if: always()
+        run: |
+          docker compose -p maritime-fishing-ci \
+            -f docker-compose.ci.yml down -v
