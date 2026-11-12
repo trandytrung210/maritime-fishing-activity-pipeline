@@ -1,0 +1,3 @@
+plotly>=5.24,<7
+# Optional interactive server (may conflict with pandas>=3 on some envs):
+# streamlit>=1.40,<2

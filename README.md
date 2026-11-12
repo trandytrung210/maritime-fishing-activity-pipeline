@@ -16,6 +16,7 @@ CI/CD.
 5. Validate Silver and Gold layers before upload.
 6. Upload verified Parquet to S3 (`fishing-silver`, `fishing-gold`) with SHA-256, staging, read-back verification, and audit logs.
 7. Finalize pending Gold change tracking only after a successful Gold upload.
+8. Generate interactive Gold analytics dashboards (PyArrow + Plotly HTML) for daily, monthly, area, and hours-DQ views.
 
 ## Architecture
 
@@ -36,10 +37,14 @@ Silver (Parquet + DQ + quarantine)
     │         └─► finalize_gold_changes
     │
     └─► upload_silver
+              │
+              ▼
+    Gold dashboards (PyArrow → Plotly HTML)
 
 Object store: SeaweedFS S3 gateway
 Orchestration: Airflow 3 (LocalExecutor)
 Compute: PySpark 4.x + Java 21
+Analytics UI: dashboard/ (Plotly HTML; optional Streamlit)
 ```
 
 ### Medallion layers
@@ -76,6 +81,10 @@ Compute: PySpark 4.x + Java 21
 │   ├── common/               # manifest, spark_io
 │   ├── silver/               # ingest, silver, validate, upload
 │   └── gold/                 # detect, build, validate, upload, finalize
+├── dashboard/                # Gold analytics dashboards (PyArrow + Plotly)
+│   ├── generate.py           # Build HTML reports under reports/dashboards/
+│   ├── app.py / pages/       # Optional Streamlit UI
+│   └── lib/                  # Data loaders + chart helpers
 ├── test/                     # Unit + SeaweedFS integration tests
 ├── scripts/deploy_staging.sh
 ├── Dockerfile.deploy         # Baked image for GHCR / staging
@@ -152,7 +161,32 @@ UI: [http://localhost:8080](http://localhost:8080)
 
 The DAG `maritime_fishing_pipeline` mounts the repo at `/opt/maritime_project` and runs scripts under `src/` via `include/run_script.py`.
 
-### 4. Run the pipeline
+### 4. Gold analytics dashboards
+
+After Gold Parquet exists under `data/processed/gold/`, generate interactive HTML dashboards (PyArrow reads + Plotly charts; no Spark):
+
+```bash
+pip install -r dashboard/requirements.txt
+python dashboard/generate.py
+```
+
+Open [`reports/dashboards/index.html`](reports/dashboards/index.html) in a browser.
+
+| Page | Gold source | What it shows |
+|---|---|---|
+| Overview | monthly inventory | Fishing hours vs vessels by month; Gold row counts |
+| Daily Vessel | `daily_vessel_activity` | Latest month: daily trend + top vessels |
+| Monthly Activity | `monthly_vessel_activity` | Month trends + ranked vessels (fishing hours / active days) |
+| Area Fishing | `area_fishing_activity` | Hot grid cells (scatter + rankings) |
+| Hours DQ | `reports/daily_vessel_hours_dq` | NORMAL / INFO / REVIEW mix from daily hours rules |
+
+**Chart controls (Plotly):** hover for values, drag to zoom, double-click to reset, legend click to hide/show series, camera icon to export PNG.
+
+Re-run `python dashboard/generate.py` whenever Gold (or the DQ summary) is rebuilt. Output under `reports/dashboards/` is gitignored with the rest of `reports/`.
+
+Optional Streamlit UI (`streamlit run dashboard/app.py`) — see [`dashboard/README.md`](dashboard/README.md). Prefer HTML generation if Streamlit conflicts with the pinned pandas version.
+
+### 5. Run the pipeline
 
 Trigger `maritime_fishing_pipeline` manually in the Airflow UI (schedule is `None`).
 
@@ -246,6 +280,9 @@ Staging mounts data/reports/logs only; application code comes from the image.
 | `src/gold/finalize_gold_changes.py` | Clear pending after successful upload |
 | `src/common/manifest.py` | Shared manifests, locks, run ids |
 | `src/common/spark_io.py` | Safe Parquet writes (tmp stage for Windows mounts) |
+| `dashboard/generate.py` | Build Plotly HTML dashboards from Gold Parquet |
+| `dashboard/lib/data.py` | PyArrow loaders / aggregations for dashboard pages |
+| `dashboard/app.py` | Optional Streamlit entrypoint |
 
 ## Configuration reference
 
